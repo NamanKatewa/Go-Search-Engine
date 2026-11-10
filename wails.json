@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "go-search-engine",
+  "outputfilename": "GoSearchEngine",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Naman Katewa",
+    "email": "namankatewa@example.com"
+  },
+  "info": {
+    "companyName": "K.R. Mangalam University",
+    "productName": "Go Desktop Search Engine",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright 2026 Naman Katewa",
+    "comments": "High-Performance Concurrent Web Crawler and Local Inverted Index Desktop Search Engine in Go"
+  }
+}

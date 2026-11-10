@@ -30,9 +30,16 @@ interface SearchResult {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'search'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'search' | 'crawler'>('search');
 
-  // Crawler Configuration
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchTimeMs, setSearchTimeMs] = useState<number | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  // Crawler state
   const [seedUrl, setSeedUrl] = useState('https://go.dev');
   const [maxPages, setMaxPages] = useState(25);
   const [concurrency, setConcurrency] = useState(4);
@@ -51,21 +58,15 @@ export default function App() {
     recentLogs: [],
   });
 
-  // Search Configuration
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [searchTimeMs, setSearchTimeMs] = useState<number | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const logContainerRef = useRef<HTMLDivElement>(null);
 
-  // Read URL query params on mount for deep-linking (e.g. ?tab=search&q=concurrency)
+  // Read URL query params on mount for direct deep-linking
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
-    if (tabParam === 'search') {
+    if (tabParam === 'crawler' || tabParam === 'dashboard') {
+      setActiveTab('crawler');
+    } else {
       setActiveTab('search');
     }
     const qParam = params.get('q');
@@ -75,7 +76,7 @@ export default function App() {
     }
   }, []);
 
-  // Poll metrics every 600ms
+  // Poll metrics every 800ms
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
@@ -86,12 +87,12 @@ export default function App() {
           setIsCrawling(data.isRunning);
         }
       } catch (err) {
-        // Backend offline or polling variance
+        // silent
       }
     };
 
     fetchMetrics();
-    const interval = setInterval(fetchMetrics, 600);
+    const interval = setInterval(fetchMetrics, 800);
     return () => clearInterval(interval);
   }, []);
 
@@ -104,7 +105,7 @@ export default function App() {
         body: JSON.stringify({ seedUrl, maxPages, concurrency }),
       });
     } catch (err) {
-      console.error('Failed to start crawl:', err);
+      console.error(err);
     }
   };
 
@@ -113,7 +114,7 @@ export default function App() {
       await fetch('/api/crawl/stop', { method: 'POST' });
       setIsCrawling(false);
     } catch (err) {
-      console.error('Failed to stop crawl:', err);
+      console.error(err);
     }
   };
 
@@ -137,245 +138,282 @@ export default function App() {
         setSearchResults([]);
       }
     } catch (err) {
-      console.error('Search failed:', err);
       setSearchResults([]);
     } finally {
       setIsSearching(false);
     }
   };
 
-  // Memory calculation: Bloom filter vs raw strings hash map
-  const rawHashMapBytes = metrics.totalBloomCount > 0 ? metrics.totalBloomCount * 72 : 72000;
-  const ramSavedPercent = rawHashMapBytes > 0 
-    ? Math.max(0, Math.min(96, Math.round(((rawHashMapBytes - (metrics.bloomMemoryBytes / 8)) / rawHashMapBytes) * 100)))
-    : 92;
-
-  const crawlProgressPercent = maxPages > 0 
-    ? Math.min(100, Math.round((metrics.pagesCrawled / maxPages) * 100))
-    : 0;
-
-  // Helper to highlight matched terms in snippet
-  const highlightSnippet = (snippet: string, terms: string[]) => {
-    if (!terms || terms.length === 0) return snippet;
-    const regex = new RegExp(`\\b(${terms.join('|')})\\b`, 'gi');
-    const parts = snippet.split(regex);
-    return parts.map((part, i) => {
-      if (terms.some(t => t.toLowerCase() === part.toLowerCase())) {
-        return (
-          <mark key={i} style={{
-            backgroundColor: 'rgba(14, 165, 233, 0.25)',
-            color: '#38bdf8',
-            fontWeight: 700,
-            padding: '1px 3px',
-            borderRadius: '3px',
-          }}>
-            {part}
-          </mark>
-        );
-      }
-      return part;
-    });
-  };
-
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#080c14' }}>
-      {/* Precision Top App Bar */}
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#0e1013', color: '#e4e4e7' }}>
+      {/* Quiet Header */}
       <header style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '14px 28px',
-        backgroundColor: '#0c121e',
-        borderBottom: '1px solid #1a2336',
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        backdropFilter: 'blur(12px)',
+        padding: '14px 24px',
+        borderBottom: '1px solid #1f232b',
+        backgroundColor: '#0e1013',
       }}>
-        {/* Brand identity */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '38px',
-            height: '38px',
-            borderRadius: '9px',
-            background: 'linear-gradient(135deg, #0284c7 0%, #10b981 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 800,
-            fontSize: '17px',
-            color: '#ffffff',
-            letterSpacing: '-0.5px',
-            boxShadow: '0 0 16px rgba(2, 132, 199, 0.4)',
-          }}>
-            GO
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.2px' }}>
-                Go Search Engine
-              </h1>
-              <span style={{
-                fontSize: '10px',
-                fontWeight: 700,
-                color: '#38bdf8',
-                backgroundColor: 'rgba(2, 132, 199, 0.15)',
-                border: '1px solid rgba(2, 132, 199, 0.3)',
-                padding: '1px 6px',
-                borderRadius: '4px',
-                fontFamily: 'monospace',
-              }}>
-                v1.0 WAL
-              </span>
-            </div>
-            <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>
-              Concurrent Goroutine Swarm & Inverted Index Engine
-            </p>
-          </div>
-        </div>
-
-        {/* Tactile Segmented Tab Switcher */}
-        <div style={{
-          display: 'flex',
-          backgroundColor: '#060a12',
-          border: '1px solid #1a2336',
-          borderRadius: '9px',
-          padding: '3px',
-          gap: '2px',
-        }}>
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            style={{
-              padding: '7px 18px',
-              borderRadius: '7px',
-              fontSize: '12.5px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              border: 'none',
-              transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
-              backgroundColor: activeTab === 'dashboard' ? '#1a263c' : 'transparent',
-              color: activeTab === 'dashboard' ? '#f8fafc' : '#94a3b8',
-              boxShadow: activeTab === 'dashboard' ? '0 2px 8px rgba(0,0,0,0.3)' : 'none',
-            }}
-          >
-            Crawler Dashboard
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('search');
-              setTimeout(() => searchInputRef.current?.focus(), 50);
-            }}
-            style={{
-              padding: '7px 18px',
-              borderRadius: '7px',
-              fontSize: '12.5px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              border: 'none',
-              transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
-              backgroundColor: activeTab === 'search' ? '#1a263c' : 'transparent',
-              color: activeTab === 'search' ? '#f8fafc' : '#94a3b8',
-              boxShadow: activeTab === 'search' ? '0 2px 8px rgba(0,0,0,0.3)' : 'none',
-            }}
-          >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <span style={{ fontSize: '14px', fontWeight: 600, color: '#f4f4f5', letterSpacing: '-0.2px' }}>
             Search Engine
-          </button>
+          </span>
+
+          <nav style={{ display: 'flex', gap: '4px' }}>
+            <button
+              onClick={() => {
+                setActiveTab('search');
+                setTimeout(() => searchInputRef.current?.focus(), 50);
+              }}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '5px',
+                fontSize: '12.5px',
+                fontWeight: activeTab === 'search' ? 600 : 400,
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: activeTab === 'search' ? '#1c2029' : 'transparent',
+                color: activeTab === 'search' ? '#f4f4f5' : '#8b949e',
+              }}
+            >
+              Search
+            </button>
+            <button
+              onClick={() => setActiveTab('crawler')}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '5px',
+                fontSize: '12.5px',
+                fontWeight: activeTab === 'crawler' ? 600 : 400,
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: activeTab === 'crawler' ? '#1c2029' : 'transparent',
+                color: activeTab === 'crawler' ? '#f4f4f5' : '#8b949e',
+              }}
+            >
+              Crawler
+            </button>
+          </nav>
         </div>
 
-        {/* Live Status HUD */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '5px 12px',
-            borderRadius: '6px',
-            backgroundColor: isCrawling ? 'rgba(16, 185, 129, 0.12)' : '#101624',
-            border: isCrawling ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid #1e293b',
-          }}>
-            <span
-              className={isCrawling ? 'pulse-indicator' : ''}
-              style={{
-                width: '7px',
-                height: '7px',
-                borderRadius: '50%',
-                backgroundColor: isCrawling ? '#10b981' : '#64748b',
-              }}
-            />
+        {/* Quiet status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12px', color: '#71717a' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{
-              fontSize: '11.5px',
-              fontWeight: 600,
-              color: isCrawling ? '#34d399' : '#94a3b8',
-              fontFamily: 'monospace',
-            }}>
-              {isCrawling ? 'SWARM ACTIVE' : 'ENGINE IDLE'}
-            </span>
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: isCrawling ? '#10b981' : '#52525b',
+            }} />
+            <span>{isCrawling ? 'Crawling' : 'Idle'}</span>
           </div>
-
-          <div style={{
-            fontSize: '11.5px',
-            color: '#94a3b8',
-            backgroundColor: '#101624',
-            border: '1px solid #1e293b',
-            padding: '5px 12px',
-            borderRadius: '6px',
-            fontFamily: 'monospace',
-          }}>
-            Corpus: <strong style={{ color: '#38bdf8' }}>{metrics.totalIndexedDocs}</strong> docs
-          </div>
+          <span>•</span>
+          <span>{metrics.totalIndexedDocs} indexed</span>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main style={{ flex: 1, padding: '24px 28px', maxWidth: '1400px', width: '100%', margin: '0 auto' }}>
-        {activeTab === 'dashboard' ? (
+      {/* Main Surface */}
+      <main style={{ flex: 1, maxWidth: '860px', width: '100%', margin: '0 auto', padding: '32px 20px' }}>
+        {activeTab === 'search' ? (
           <div>
-            {/* Command & Control Deck */}
+            {/* Search Input Bar */}
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                backgroundColor: '#14171f',
+                border: '1px solid #242936',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                gap: '8px',
+              }}>
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  placeholder="Search indexed articles..."
+                  style={{
+                    flex: 1,
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    color: '#f4f4f5',
+                    fontSize: '14px',
+                    padding: '6px 4px',
+                    outline: 'none',
+                  }}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      searchInputRef.current?.focus();
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#71717a',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      padding: '2px 6px',
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+                <button
+                  onClick={() => handleSearch()}
+                  disabled={isSearching}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '5px',
+                    backgroundColor: '#272d3b',
+                    color: '#e4e4e7',
+                    border: '1px solid #323a4d',
+                    fontSize: '12.5px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {isSearching ? 'Searching...' : 'Search'}
+                </button>
+              </div>
+
+              {/* Sample keyword chips */}
+              <div style={{ display: 'flex', gap: '6px', marginTop: '10px', fontSize: '11.5px', color: '#71717a', flexWrap: 'wrap' }}>
+                <span>Try:</span>
+                {['concurrency goroutines', 'sqlite database', 'bloom filter memory', 'desktop wails'].map((sample) => (
+                  <button
+                    key={sample}
+                    onClick={() => {
+                      setSearchQuery(sample);
+                      handleSearch(sample);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#93c5fd',
+                      cursor: 'pointer',
+                      padding: '0 2px',
+                      fontSize: '11.5px',
+                      textDecoration: 'underline',
+                      textUnderlineOffset: '2px',
+                    }}
+                  >
+                    {sample}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Results count & latency */}
+            {hasSearched && (
+              <div style={{
+                fontSize: '12px',
+                color: '#71717a',
+                marginBottom: '16px',
+                display: 'flex',
+                justifyContent: 'space-between',
+              }}>
+                <span>Found {searchResults.length} document{searchResults.length === 1 ? '' : 's'}</span>
+                {searchTimeMs !== null && <span>{searchTimeMs} ms</span>}
+              </div>
+            )}
+
+            {/* Results List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {searchResults.length > 0 ? (
+                searchResults.map((res, idx) => (
+                  <div key={idx} style={{ paddingBottom: '16px', borderBottom: '1px solid #1a1e27' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px' }}>
+                      <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#f4f4f5' }}>
+                        <a
+                          href={res.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: '#60a5fa', textDecoration: 'none' }}
+                        >
+                          {res.title || res.url}
+                        </a>
+                      </h2>
+                      <span style={{ fontSize: '11px', color: '#71717a', fontFamily: 'monospace' }}>
+                        TF-IDF {res.score.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '11.5px', color: '#10b981', fontFamily: 'monospace', marginTop: '2px', marginBottom: '6px' }}>
+                      {res.url}
+                    </div>
+
+                    <p style={{ fontSize: '13px', color: '#a1a1aa', lineHeight: '1.55' }}>
+                      {res.snippet}
+                    </p>
+
+                    {res.matchedTerms && res.matchedTerms.length > 0 && (
+                      <div style={{ display: 'flex', gap: '5px', marginTop: '6px', fontSize: '11px', color: '#71717a' }}>
+                        <span>Matched:</span>
+                        {res.matchedTerms.map((t, tIdx) => (
+                          <span key={tIdx} style={{ color: '#c084fc', fontFamily: 'monospace' }}>
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : hasSearched ? (
+                <div style={{ textAlign: 'center', padding: '36px 0', color: '#71717a', fontSize: '13px' }}>
+                  No matching documents found.
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '48px 0', color: '#52525b', fontSize: '13px' }}>
+                  Type a keyword above to search the local inverted index.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* Crawler Tab */
+          <div>
+            {/* Control Strip */}
             <div style={{
-              backgroundColor: '#0c121e',
-              border: '1px solid #1a2336',
-              borderRadius: '12px',
-              padding: '20px 24px',
+              backgroundColor: '#14171f',
+              border: '1px solid #242936',
+              borderRadius: '8px',
+              padding: '16px',
               marginBottom: '20px',
               display: 'flex',
               flexWrap: 'wrap',
-              gap: '16px',
+              gap: '12px',
               alignItems: 'flex-end',
             }}>
-              {/* Seed URL */}
-              <div style={{ flex: '3 1 320px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.4px' }}>
-                    SEED URL (ENTRYPOINT)
-                  </label>
-                  <span style={{ fontSize: '10.5px', color: '#64748b' }}>Robots.txt compliant</span>
-                </div>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <input
-                    type="text"
-                    value={seedUrl}
-                    onChange={(e) => setSeedUrl(e.target.value)}
-                    disabled={isCrawling}
-                    placeholder="https://go.dev"
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '7px',
-                      backgroundColor: '#070b12',
-                      border: '1px solid #1e293b',
-                      color: '#f8fafc',
-                      fontSize: '13px',
-                      fontFamily: 'monospace',
-                      outline: 'none',
-                    }}
-                  />
-                </div>
+              <div style={{ flex: '3 1 280px' }}>
+                <label style={{ display: 'block', fontSize: '11px', color: '#71717a', marginBottom: '4px' }}>
+                  Seed URL
+                </label>
+                <input
+                  type="text"
+                  value={seedUrl}
+                  onChange={(e) => setSeedUrl(e.target.value)}
+                  disabled={isCrawling}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '5px',
+                    backgroundColor: '#0c0e12',
+                    border: '1px solid #272d3b',
+                    color: '#f4f4f5',
+                    fontSize: '12.5px',
+                    fontFamily: 'monospace',
+                  }}
+                />
               </div>
 
-              {/* Page Limit */}
-              <div style={{ flex: '1 1 120px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.4px', marginBottom: '6px' }}>
-                  PAGE CEILING
+              <div style={{ flex: '1 1 90px' }}>
+                <label style={{ display: 'block', fontSize: '11px', color: '#71717a', marginBottom: '4px' }}>
+                  Limit
                 </label>
                 <input
                   type="number"
@@ -386,22 +424,20 @@ export default function App() {
                   max={2000}
                   style={{
                     width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '7px',
-                    backgroundColor: '#070b12',
-                    border: '1px solid #1e293b',
-                    color: '#f8fafc',
-                    fontSize: '13px',
+                    padding: '8px 10px',
+                    borderRadius: '5px',
+                    backgroundColor: '#0c0e12',
+                    border: '1px solid #272d3b',
+                    color: '#f4f4f5',
+                    fontSize: '12.5px',
                     fontFamily: 'monospace',
-                    outline: 'none',
                   }}
                 />
               </div>
 
-              {/* Concurrency Selector */}
-              <div style={{ flex: '1 1 150px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.4px', marginBottom: '6px' }}>
-                  GOROUTINE SWARM
+              <div style={{ flex: '1 1 120px' }}>
+                <label style={{ display: 'block', fontSize: '11px', color: '#71717a', marginBottom: '4px' }}>
+                  Workers
                 </label>
                 <select
                   value={concurrency}
@@ -409,598 +445,149 @@ export default function App() {
                   disabled={isCrawling}
                   style={{
                     width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '7px',
-                    backgroundColor: '#070b12',
-                    border: '1px solid #1e293b',
-                    color: '#f8fafc',
-                    fontSize: '13px',
-                    outline: 'none',
-                    cursor: 'pointer',
+                    padding: '8px 10px',
+                    borderRadius: '5px',
+                    backgroundColor: '#0c0e12',
+                    border: '1px solid #272d3b',
+                    color: '#f4f4f5',
+                    fontSize: '12.5px',
                   }}
                 >
-                  <option value={2}>2 Workers (Light)</option>
-                  <option value={4}>4 Workers (Standard)</option>
-                  <option value={8}>8 Workers (Parallel)</option>
-                  <option value={16}>16 Workers (Turbo)</option>
+                  <option value={2}>2 Goroutines</option>
+                  <option value={4}>4 Goroutines</option>
+                  <option value={8}>8 Goroutines</option>
+                  <option value={16}>16 Goroutines</option>
                 </select>
               </div>
 
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div>
                 {!isCrawling ? (
                   <button
                     onClick={handleStartCrawl}
                     style={{
-                      padding: '10px 24px',
-                      borderRadius: '7px',
-                      backgroundColor: '#0284c7',
+                      padding: '8px 18px',
+                      borderRadius: '5px',
+                      backgroundColor: '#2563eb',
                       color: '#ffffff',
-                      fontSize: '13px',
-                      fontWeight: 700,
                       border: 'none',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
                       cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      boxShadow: '0 2px 10px rgba(2, 132, 199, 0.35)',
                     }}
                   >
-                    Start Crawler Swarm
+                    Start Crawl
                   </button>
                 ) : (
                   <button
                     onClick={handleStopCrawl}
                     style={{
-                      padding: '10px 24px',
-                      borderRadius: '7px',
-                      backgroundColor: '#e11d48',
+                      padding: '8px 18px',
+                      borderRadius: '5px',
+                      backgroundColor: '#dc2626',
                       color: '#ffffff',
-                      fontSize: '13px',
-                      fontWeight: 700,
                       border: 'none',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
                       cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      boxShadow: '0 2px 10px rgba(225, 29, 72, 0.4)',
                     }}
                   >
-                    Halt Workers
+                    Stop
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Precision KPI Panel Grid */}
+            {/* Quiet Metrics Readout */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-              gap: '16px',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: '12px',
               marginBottom: '20px',
             }}>
-              {/* Panel 1: Progress */}
-              <div style={{
-                backgroundColor: '#0c121e',
-                border: '1px solid #1a2336',
-                borderRadius: '10px',
-                padding: '18px 20px',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#38bdf8', letterSpacing: '0.4px' }}>
-                    CRAWL PROGRESS
-                  </span>
-                  <span style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>
-                    {crawlProgressPercent}%
-                  </span>
+              <div style={{ backgroundColor: '#14171f', border: '1px solid #242936', borderRadius: '7px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', color: '#71717a' }}>Pages Crawled</div>
+                <div style={{ fontSize: '18px', fontWeight: 600, color: '#f4f4f5', marginTop: '2px', fontFamily: 'monospace' }}>
+                  {metrics.pagesCrawled} <span style={{ fontSize: '11px', color: '#71717a', fontWeight: 400 }}>/ {maxPages}</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '8px' }}>
-                  <span style={{ fontSize: '28px', fontWeight: 800, color: '#f8fafc', fontFamily: 'monospace' }}>
-                    {metrics.pagesCrawled}
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>
-                    / {maxPages} pages
-                  </span>
-                </div>
-                {/* Progress bar */}
-                <div style={{ width: '100%', height: '4px', backgroundColor: '#1a2336', borderRadius: '2px', marginTop: '10px', overflow: 'hidden' }}>
-                  <div style={{
-                    width: `${crawlProgressPercent}%`,
-                    height: '100%',
-                    backgroundColor: '#0284c7',
-                    transition: 'width 0.4s ease',
-                  }} />
-                </div>
-                <div style={{ marginTop: '10px', fontSize: '11.5px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Throughput:</span>
-                  <strong style={{ color: '#38bdf8', fontFamily: 'monospace' }}>{metrics.pagesPerSecond} pgs/sec</strong>
-                </div>
+                <div style={{ fontSize: '11px', color: '#71717a', marginTop: '2px' }}>{metrics.pagesPerSecond} pgs/sec</div>
               </div>
 
-              {/* Panel 2: Frontier Queue */}
-              <div style={{
-                backgroundColor: '#0c121e',
-                border: '1px solid #1a2336',
-                borderRadius: '10px',
-                padding: '18px 20px',
-              }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#a855f7', letterSpacing: '0.4px' }}>
-                  FRONTIER QUEUE (BUFFER)
+              <div style={{ backgroundColor: '#14171f', border: '1px solid #242936', borderRadius: '7px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', color: '#71717a' }}>Queue Depth</div>
+                <div style={{ fontSize: '18px', fontWeight: 600, color: '#f4f4f5', marginTop: '2px', fontFamily: 'monospace' }}>
+                  {metrics.queueSize}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '8px' }}>
-                  <span style={{ fontSize: '28px', fontWeight: 800, color: '#f8fafc', fontFamily: 'monospace' }}>
-                    {metrics.queueSize}
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>
-                    enqueued URLs
-                  </span>
-                </div>
-                <div style={{ width: '100%', height: '4px', backgroundColor: '#1a2336', borderRadius: '2px', marginTop: '10px', overflow: 'hidden' }}>
-                  <div style={{
-                    width: `${Math.min(100, (metrics.queueSize / 100) * 100)}%`,
-                    height: '100%',
-                    backgroundColor: '#a855f7',
-                  }} />
-                </div>
-                <div style={{ marginTop: '10px', fontSize: '11.5px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Architecture:</span>
-                  <span style={{ color: '#cbd5e1', fontFamily: 'monospace' }}>chan string (Buffered)</span>
-                </div>
+                <div style={{ fontSize: '11px', color: '#71717a', marginTop: '2px' }}>Buffered channel</div>
               </div>
 
-              {/* Panel 3: In-Memory Bloom Filter */}
-              <div style={{
-                backgroundColor: '#0c121e',
-                border: '1px solid #1a2336',
-                borderRadius: '10px',
-                padding: '18px 20px',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#10b981', letterSpacing: '0.4px' }}>
-                    BLOOM FILTER (VISITED SET)
-                  </span>
-                  <span style={{
-                    fontSize: '10px',
-                    fontWeight: 700,
-                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                    color: '#34d399',
-                    padding: '1px 6px',
-                    borderRadius: '4px',
-                  }}>
-                    ~{ramSavedPercent}% RAM Saved
-                  </span>
+              <div style={{ backgroundColor: '#14171f', border: '1px solid #242936', borderRadius: '7px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', color: '#71717a' }}>Bloom Filter</div>
+                <div style={{ fontSize: '18px', fontWeight: 600, color: '#f4f4f5', marginTop: '2px', fontFamily: 'monospace' }}>
+                  {metrics.totalBloomCount} <span style={{ fontSize: '11px', color: '#71717a', fontWeight: 400 }}>hashes</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '8px' }}>
-                  <span style={{ fontSize: '28px', fontWeight: 800, color: '#f8fafc', fontFamily: 'monospace' }}>
-                    {metrics.totalBloomCount}
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>
-                    tracked hashes
-                  </span>
-                </div>
-                <div style={{ width: '100%', height: '4px', backgroundColor: '#1a2336', borderRadius: '2px', marginTop: '10px', overflow: 'hidden' }}>
-                  <div style={{
-                    width: `${Math.min(100, (metrics.totalBloomCount / 1000) * 100)}%`,
-                    height: '100%',
-                    backgroundColor: '#10b981',
-                  }} />
-                </div>
-                <div style={{ marginTop: '10px', fontSize: '11.5px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Bit Array: {(metrics.bloomMemoryBytes / 1024).toFixed(0)} KB</span>
-                  <span style={{ color: '#34d399', fontFamily: 'monospace' }}>FP Bound &lt; 0.1%</span>
-                </div>
+                <div style={{ fontSize: '11px', color: '#71717a', marginTop: '2px' }}>{(metrics.bloomMemoryBytes / 1024).toFixed(0)} KB (FP &lt; 0.1%)</div>
               </div>
 
-              {/* Panel 4: SQLite Index */}
-              <div style={{
-                backgroundColor: '#0c121e',
-                border: '1px solid #1a2336',
-                borderRadius: '10px',
-                padding: '18px 20px',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b', letterSpacing: '0.4px' }}>
-                    SQLITE INVERTED INDEX
-                  </span>
-                  <span style={{
-                    fontSize: '10px',
-                    fontWeight: 700,
-                    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-                    color: '#fbbf24',
-                    padding: '1px 6px',
-                    borderRadius: '4px',
-                    fontFamily: 'monospace',
-                  }}>
-                    WAL MODE
-                  </span>
+              <div style={{ backgroundColor: '#14171f', border: '1px solid #242936', borderRadius: '7px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11px', color: '#71717a' }}>SQLite Inverted Index</div>
+                <div style={{ fontSize: '18px', fontWeight: 600, color: '#f4f4f5', marginTop: '2px', fontFamily: 'monospace' }}>
+                  {metrics.totalIndexedDocs} <span style={{ fontSize: '11px', color: '#71717a', fontWeight: 400 }}>docs</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '8px' }}>
-                  <span style={{ fontSize: '28px', fontWeight: 800, color: '#f8fafc', fontFamily: 'monospace' }}>
-                    {metrics.totalIndexedDocs}
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>
-                    docs ({metrics.totalUniqueTerms} unique terms)
-                  </span>
-                </div>
-                <div style={{ width: '100%', height: '4px', backgroundColor: '#1a2336', borderRadius: '2px', marginTop: '10px', overflow: 'hidden' }}>
-                  <div style={{
-                    width: '100%',
-                    height: '100%',
-                    backgroundColor: '#f59e0b',
-                  }} />
-                </div>
-                <div style={{ marginTop: '10px', fontSize: '11.5px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Writer Goroutine:</span>
-                  <span style={{ color: '#cbd5e1', fontFamily: 'monospace' }}>Single-Writer Batch</span>
-                </div>
+                <div style={{ fontSize: '11px', color: '#71717a', marginTop: '2px' }}>{metrics.totalUniqueTerms} unique terms</div>
               </div>
             </div>
 
-            {/* Live Telemetry Console */}
+            {/* Quiet Console Log */}
             <div style={{
-              backgroundColor: '#0c121e',
-              border: '1px solid #1a2336',
-              borderRadius: '12px',
-              padding: '18px 20px',
+              backgroundColor: '#10131a',
+              border: '1px solid #242936',
+              borderRadius: '7px',
+              padding: '12px 14px',
             }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '12px',
-                paddingBottom: '10px',
-                borderBottom: '1px solid #161e30',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    backgroundColor: isCrawling ? '#0284c7' : '#64748b',
-                  }} />
-                  <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc', letterSpacing: '0.2px' }}>
-                    SWARM PIPELINE & DATABASE COMMITS STREAM
-                  </h3>
-                </div>
-                <span style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>
-                  Active rolling buffer (40 entries)
-                </span>
+              <div style={{ fontSize: '11px', color: '#71717a', marginBottom: '8px' }}>
+                Crawl Activity Log
               </div>
-
-              <div
-                ref={logContainerRef}
-                style={{
-                  height: '260px',
-                  overflowY: 'auto',
-                  backgroundColor: '#05080f',
-                  borderRadius: '7px',
-                  padding: '12px 14px',
-                  fontFamily: 'monospace',
-                  fontSize: '11.5px',
-                  lineHeight: '1.65',
-                  border: '1px solid #141b2b',
-                }}
-              >
+              <div style={{
+                height: '240px',
+                overflowY: 'auto',
+                fontFamily: 'monospace',
+                fontSize: '11px',
+                lineHeight: '1.6',
+                color: '#94a3b8',
+              }}>
                 {metrics.recentLogs && metrics.recentLogs.length > 0 ? (
-                  metrics.recentLogs.map((log, idx) => {
-                    let levelColor = '#94a3b8';
-                    if (log.level === 'SUCCESS') levelColor = '#34d399';
-                    if (log.level === 'WARN') levelColor = '#fbbf24';
-                    if (log.level === 'ERROR') levelColor = '#f87171';
-                    if (log.level === 'INFO') levelColor = '#38bdf8';
-
-                    return (
-                      <div key={idx} style={{ display: 'flex', gap: '10px', marginBottom: '3px' }}>
-                        <span style={{ color: '#475569' }}>[{log.timestamp}]</span>
-                        <span style={{ color: levelColor, fontWeight: 700, minWidth: '60px' }}>
-                          [{log.level}]
-                        </span>
-                        <span style={{ color: '#e2e8f0', flex: 1 }}>{log.message}</span>
-                        {log.url && (
-                          <span style={{ color: '#64748b', maxWidth: '320px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {log.url}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div style={{ color: '#475569', padding: '24px 0', textAlign: 'center' }}>
-                    Crawler stream idle. Click "Start Crawler Swarm" to dispatch workers.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* Search Interface */
-          <div>
-            {/* Search Command Box */}
-            <div style={{
-              backgroundColor: '#0c121e',
-              border: '1px solid #1a2336',
-              borderRadius: '14px',
-              padding: '24px 28px',
-              marginBottom: '20px',
-            }}>
-              <div style={{ marginBottom: '16px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.2px' }}>
-                  Instant Local Corpus Search
-                </h2>
-                <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                  Ranked dynamically at query time using mathematical <strong>TF-IDF</strong> relevance scoring across the local SQLite inverted index.
-                </p>
-              </div>
-
-              {/* Search Bar Input */}
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                    placeholder="Enter keywords (e.g. concurrency goroutines, bloom filter, wails)..."
-                    style={{
-                      width: '100%',
-                      padding: '12px 18px',
-                      borderRadius: '8px',
-                      backgroundColor: '#070b12',
-                      border: '1px solid #1e293b',
-                      color: '#f8fafc',
-                      fontSize: '14px',
-                      outline: 'none',
-                    }}
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => {
-                        setSearchQuery('');
-                        searchInputRef.current?.focus();
-                      }}
-                      style={{
-                        position: 'absolute',
-                        right: '12px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#64748b',
-                        fontSize: '16px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => handleSearch()}
-                  disabled={isSearching}
-                  style={{
-                    padding: '12px 28px',
-                    borderRadius: '8px',
-                    backgroundColor: '#0284c7',
-                    color: '#ffffff',
-                    fontSize: '13.5px',
-                    fontWeight: 700,
-                    border: 'none',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    boxShadow: '0 2px 10px rgba(2, 132, 199, 0.35)',
-                  }}
-                >
-                  {isSearching ? 'Evaluating...' : 'Query'}
-                </button>
-              </div>
-
-              {/* Sample Queries */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>Suggested:</span>
-                {['concurrency goroutines', 'sqlite database', 'bloom filter memory', 'desktop wails'].map((sample) => (
-                  <button
-                    key={sample}
-                    onClick={() => {
-                      setSearchQuery(sample);
-                      handleSearch(sample);
-                    }}
-                    style={{
-                      padding: '3px 10px',
-                      borderRadius: '5px',
-                      backgroundColor: '#101624',
-                      border: '1px solid #1a2336',
-                      color: '#38bdf8',
-                      fontSize: '11.5px',
-                      fontFamily: 'monospace',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    {sample}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Results Header Metadata */}
-            {hasSearched && (
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '14px',
-                padding: '0 4px',
-              }}>
-                <span style={{ fontSize: '13px', color: '#94a3b8' }}>
-                  Retrieved <strong style={{ color: '#f8fafc' }}>{searchResults.length}</strong> matching document{searchResults.length === 1 ? '' : 's'}
-                </span>
-                {searchTimeMs !== null && (
-                  <span style={{
-                    fontSize: '11px',
-                    color: '#34d399',
-                    fontFamily: 'monospace',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    border: '1px solid rgba(16, 185, 129, 0.25)',
-                    padding: '3px 8px',
-                    borderRadius: '5px',
-                  }}>
-                    Query Latency: {searchTimeMs} ms · Dynamic IDF
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Results List */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {searchResults.length > 0 ? (
-                searchResults.map((res, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      backgroundColor: '#0c121e',
-                      border: '1px solid #1a2336',
-                      borderRadius: '10px',
-                      padding: '18px 22px',
-                      transition: 'border-color 0.18s ease',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                          <span style={{
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            color: '#64748b',
-                            fontFamily: 'monospace',
-                          }}>
-                            #{idx + 1}
-                          </span>
-                          <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#38bdf8' }}>
-                            <a
-                              href={res.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ color: 'inherit', textDecoration: 'none' }}
-                            >
-                              {res.title || res.url}
-                            </a>
-                          </h3>
-                        </div>
-
-                        <a
-                          href={res.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{
-                            fontSize: '11.5px',
-                            color: '#10b981',
-                            fontFamily: 'monospace',
-                            textDecoration: 'none',
-                            display: 'block',
-                            marginBottom: '8px',
-                          }}
-                        >
-                          {res.url}
-                        </a>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: '90px' }}>
-                        <div style={{
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          backgroundColor: 'rgba(2, 132, 199, 0.15)',
-                          border: '1px solid rgba(2, 132, 199, 0.3)',
-                          color: '#38bdf8',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          fontFamily: 'monospace',
-                        }}>
-                          TF-IDF: {res.score.toFixed(2)}
-                        </div>
-                        <span style={{ fontSize: '10.5px', color: '#64748b', marginTop: '3px' }}>
-                          {res.wordCount} words
-                        </span>
-                      </div>
+                  metrics.recentLogs.map((log, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '8px' }}>
+                      <span style={{ color: '#52525b' }}>{log.timestamp}</span>
+                      <span style={{ color: log.level === 'SUCCESS' ? '#34d399' : log.level === 'ERROR' ? '#f87171' : log.level === 'WARN' ? '#fbbf24' : '#60a5fa' }}>
+                        [{log.level}]
+                      </span>
+                      <span style={{ color: '#d4d4d8', flex: 1 }}>{log.message}</span>
+                      {log.url && <span style={{ color: '#52525b', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.url}</span>}
                     </div>
-
-                    <p style={{
-                      fontSize: '13px',
-                      color: '#cbd5e1',
-                      lineHeight: '1.6',
-                      marginTop: '6px',
-                    }}>
-                      {highlightSnippet(res.snippet, res.matchedTerms)}
-                    </p>
-
-                    {/* Matched keyword tags */}
-                    {res.matchedTerms && res.matchedTerms.length > 0 && (
-                      <div style={{ display: 'flex', gap: '5px', marginTop: '10px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '10.5px', color: '#64748b', alignSelf: 'center' }}>Matched:</span>
-                        {res.matchedTerms.map((term, tIdx) => (
-                          <span
-                            key={tIdx}
-                            style={{
-                              padding: '1px 6px',
-                              borderRadius: '4px',
-                              backgroundColor: '#141d2e',
-                              border: '1px solid #1f2c44',
-                              color: '#a855f7',
-                              fontSize: '10.5px',
-                              fontWeight: 600,
-                              fontFamily: 'monospace',
-                            }}
-                          >
-                            #{term}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                  ))
+                ) : (
+                  <div style={{ color: '#52525b', padding: '16px 0', textAlign: 'center' }}>
+                    No activity. Start a crawl above to begin.
                   </div>
-                ))
-              ) : hasSearched ? (
-                <div style={{
-                  padding: '40px',
-                  textAlign: 'center',
-                  backgroundColor: '#0c121e',
-                  border: '1px solid #1a2336',
-                  borderRadius: '10px',
-                  color: '#64748b',
-                }}>
-                  <p style={{ fontSize: '14px', fontWeight: 600, color: '#94a3b8' }}>No documents matched your query</p>
-                  <p style={{ fontSize: '12px', marginTop: '4px' }}>
-                    Try broader keywords or crawl additional domains in the Crawler Dashboard.
-                  </p>
-                </div>
-              ) : (
-                <div style={{
-                  padding: '50px',
-                  textAlign: 'center',
-                  backgroundColor: '#0c121e',
-                  border: '1px solid #1a2336',
-                  borderRadius: '10px',
-                  color: '#475569',
-                }}>
-                  <p style={{ fontSize: '14px', fontWeight: 600, color: '#94a3b8' }}>Ready to query local inverted index</p>
-                  <p style={{ fontSize: '12px', marginTop: '4px' }}>
-                    Enter any terms above to view instant TF-IDF relevance rankings.
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         )}
       </main>
 
-      {/* Engineering Footer */}
+      {/* Quiet Footer */}
       <footer style={{
-        padding: '14px 28px',
-        backgroundColor: '#0c121e',
-        borderTop: '1px solid #1a2336',
+        padding: '12px 24px',
+        borderTop: '1px solid #1a1e27',
+        fontSize: '11px',
+        color: '#52525b',
         display: 'flex',
         justifyContent: 'space-between',
-        fontSize: '11px',
-        color: '#64748b',
       }}>
-        <span>ENSP465 Lab Project — K.R. Mangalam University</span>
-        <span>Lead: Naman Katewa (2401830002) | K Sai Vignesh Yadav (2401720006) | Hrishit Kaushal (2501722016)</span>
+        <span>ENSP465 · K.R. Mangalam University</span>
+        <span>Lead: Naman Katewa · Team: K Sai Vignesh Yadav, Hrishit Kaushal</span>
       </footer>
     </div>
   );

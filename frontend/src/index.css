@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
 :root {
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   color-scheme: dark;
@@ -10,39 +12,58 @@
 }
 
 body {
-  background-color: #0b1120;
-  color: #f1f5f9;
+  background-color: #080c14;
+  color: #e2e8f0;
   min-height: 100vh;
   overflow-x: hidden;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.05) 0%, transparent 35%);
+  background-attachment: fixed;
 }
 
 code, pre, .font-mono {
   font-family: 'JetBrains Mono', monospace;
+  font-feature-settings: 'zero', 'tnum';
 }
 
 /* Custom scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #0b101b;
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 4px;
+  background: #232f45;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #334360;
 }
 
-/* Animations */
+/* Pulse animation */
 @keyframes pulseGlow {
-  0%, 100% { opacity: 0.8; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.05); }
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.15);
+    box-shadow: 0 0 18px rgba(16, 185, 129, 0.9);
+  }
 }
 
 .pulse-indicator {
-  animation: pulseGlow 2s infinite ease-in-out;
+  animation: pulseGlow 1.8s infinite ease-in-out;
+}
+
+/* Input focus ring */
+input:focus, select:focus {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.25) !important;
 }

@@ -1,0 +1,3 @@
+@echo off
+echo Starting Go Desktop Search Engine...
+go run . -web

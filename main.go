@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/pkg/browser"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -130,10 +131,15 @@ func runWebServer(app *App, port int) {
 	})
 
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	url := fmt.Sprintf("http://%s", addr)
 	fmt.Printf("\n======================================================\n")
 	fmt.Printf(" Go Desktop Search Engine - Web Interface Running\n")
-	fmt.Printf(" Open in browser: http://%s\n", addr)
+	fmt.Printf(" Open in browser: %s\n", url)
 	fmt.Printf("======================================================\n\n")
+
+	go func() {
+		_ = browser.OpenURL(url)
+	}()
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("Server error: %v", err)

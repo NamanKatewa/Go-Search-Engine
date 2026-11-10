@@ -1,0 +1,11 @@
+{
+  "name": "go-search-engine",
+  "version": "1.0.0",
+  "description": "High-Performance Concurrent Web Crawler & Local Inverted Index Desktop Search Engine in Go",
+  "scripts": {
+    "start": "go run . -web",
+    "build:ui": "cd frontend && npm run build",
+    "build:exe": "go build -o go-search-engine.exe .",
+    "test": "go test -v ./..."
+  }
+}

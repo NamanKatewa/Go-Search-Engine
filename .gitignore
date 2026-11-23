@@ -19,6 +19,7 @@ node_modules/
 *.db-shm
 *.sqlite
 searchengine.db*
+!internal/data/seed.db
 
 # OS and IDE files
 .DS_Store

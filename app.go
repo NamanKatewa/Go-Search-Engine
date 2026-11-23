@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,9 @@ import (
 	"go-search-engine/internal/crawler"
 	"go-search-engine/internal/db"
 )
+
+//go:embed internal/data/seed.db
+var defaultSeedDB []byte
 
 // App struct
 type App struct {
@@ -30,10 +34,22 @@ func NewApp() *App {
 	_ = os.MkdirAll(appDir, 0755)
 	dbPath := filepath.Join(appDir, "searchengine.db")
 
+	// If the database does not exist or is empty, seed it from embedded starter database
+	if fi, err := os.Stat(dbPath); os.IsNotExist(err) || (err == nil && fi.Size() == 0) {
+		if len(defaultSeedDB) > 0 {
+			_ = os.WriteFile(dbPath, defaultSeedDB, 0644)
+		}
+	}
+
 	database, err := db.Open(dbPath)
 	if err != nil {
 		// Fallback to local working directory
 		dbPath = "searchengine.db"
+		if fi, err := os.Stat(dbPath); os.IsNotExist(err) || (err == nil && fi.Size() == 0) {
+			if len(defaultSeedDB) > 0 {
+				_ = os.WriteFile(dbPath, defaultSeedDB, 0644)
+			}
+		}
 		database, _ = db.Open(dbPath)
 	}
 

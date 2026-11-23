@@ -2,7 +2,7 @@
 
 A high-performance, standalone, locally hosted desktop search engine and concurrent web crawler built in **Go**, **SQLite**, and **Wails v2** with **React / TypeScript**.
 
-Developed as the academic project for **ENSP465 — New Age Programming Languages Lab**, Department of Computer Science & Engineering, K.R. Mangalam University.
+Developed as the academic project for **ENSP465 — New Age Programming Languages Lab**, School of Engineering & Technology, K.R. Mangalam University.
 
 **Team Lead:** Naman Katewa (Roll No: 2401830002)  
 **Team Members:** K Sai Vignesh Yadav (Roll No: 2401720006), Hrishit Kaushal (Roll No: 2501722016)
@@ -23,9 +23,11 @@ Developed as the academic project for **ENSP465 — New Age Programming Language
 ## User Interface Screenshots
 
 ### Crawler Dashboard (Live Swarm & Pipeline Telemetry)
+
 ![Crawler Dashboard](docs/screenshots/dashboard.png)
 
 ### Instant Search Engine (TF-IDF Results)
+
 ![Search Results](docs/screenshots/search_results.png)
 
 ---
@@ -68,6 +70,7 @@ Developed as the academic project for **ENSP465 — New Age Programming Language
 ## Getting Started
 
 ### Prerequisites
+
 - **Go 1.22+**
 - **Node.js 18+** & **npm**
 - **Wails v2** (optional, for native desktop GUI bundling)
@@ -75,12 +78,15 @@ Developed as the academic project for **ENSP465 — New Age Programming Language
 ### Running the Application
 
 1. **Direct Web Server Mode (Immediate testing in any browser):**
+
    ```bash
    go run . -web -port 34115
    ```
+
    Open [http://localhost:34115](http://localhost:34115) in your web browser.
 
 2. **Run Compiled Standalone Executable:**
+
    ```bash
    .\go-search-engine.exe -web
    ```
@@ -97,11 +103,13 @@ Developed as the academic project for **ENSP465 — New Age Programming Language
 ## Running Automated Tests
 
 Run the complete test suite across all subsystems:
+
 ```bash
 go test -v ./...
 ```
 
 To run individual module benchmarks and verification tests:
+
 ```bash
 go test -v ./internal/bloom/...     # Verify Bloom filter false-positive bounds
 go test -v ./internal/db/...        # Verify SQLite batch indexing and TF-IDF search

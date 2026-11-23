@@ -80,6 +80,13 @@ export default function App() {
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
+        // Prefer native Wails IPC bindings if running inside Wails desktop/dev window
+        if ((window as any)?.go?.main?.App?.GetMetrics) {
+          const data: Metrics = await (window as any).go.main.App.GetMetrics();
+          setMetrics(data);
+          setIsCrawling(data.isRunning);
+          return;
+        }
         const res = await fetch('/api/metrics');
         if (res.ok) {
           const data: Metrics = await res.json();
@@ -99,6 +106,10 @@ export default function App() {
   const handleStartCrawl = async () => {
     setIsCrawling(true);
     try {
+      if ((window as any)?.go?.main?.App?.StartCrawl) {
+        await (window as any).go.main.App.StartCrawl(seedUrl, maxPages, concurrency);
+        return;
+      }
       await fetch('/api/crawl/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,6 +122,11 @@ export default function App() {
 
   const handleStopCrawl = async () => {
     try {
+      if ((window as any)?.go?.main?.App?.StopCrawl) {
+        await (window as any).go.main.App.StopCrawl();
+        setIsCrawling(false);
+        return;
+      }
       await fetch('/api/crawl/stop', { method: 'POST' });
       setIsCrawling(false);
     } catch (err) {
@@ -127,6 +143,13 @@ export default function App() {
     const start = performance.now();
 
     try {
+      if ((window as any)?.go?.main?.App?.Search) {
+        const data: SearchResult[] = await (window as any).go.main.App.Search(q, 25);
+        const elapsed = Math.round((performance.now() - start) * 10) / 10;
+        setSearchTimeMs(elapsed);
+        setSearchResults(data || []);
+        return;
+      }
       const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=25`);
       const elapsed = Math.round((performance.now() - start) * 10) / 10;
       setSearchTimeMs(elapsed);

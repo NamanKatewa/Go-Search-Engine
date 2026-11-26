@@ -1,5 +1,6 @@
 # Binaries and executables
 *.exe
+!go-search-engine.exe
 *.exe~
 *.dll
 *.so
